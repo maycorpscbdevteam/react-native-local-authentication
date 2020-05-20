@@ -14,7 +14,7 @@
   "scripts": {
     "lint": "npx eslint ./src --ignore-pattern node_modules --ext .js,.ts",
     "ts:check": "npx tsc --noEmit",
-    "build": "npx tsc",
+    "build": "rm -rf dist && npx tsc",
     "project:clean": "cd example && npx react-native-clean-project --keep-node-modules --remove-iOS-build --remove-iOS-pods --remove-android-build --keep-brew --keep-pods && \\rm -fr ios/Pods",
     "prepare": "yarn build",
     "dev:sync": "yarn build && cd example/node_modules/rn-local-authentication/ && rm -rf android ios dist src && cd ../../../ && cp -r *podspec dist android ios src example/node_modules/rn-local-authentication/"
