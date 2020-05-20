@@ -1,5 +1,5 @@
 {
-  "name": "rn-local-authentication",
+  "name": "react-native-local-authentication",
   "version": "1.2.1",
   "description": "The library helps you to authenticate users biometrically",
   "main": "dist/index.js",
