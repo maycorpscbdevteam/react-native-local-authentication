@@ -1,5 +1,5 @@
 {
-  "name": "react-native-local-authentication",
+  "name": "rn-local-authentication",
   "version": "1.2.1",
   "description": "The library helps you to authenticate users biometrically",
   "main": "dist/index.js",
@@ -17,7 +17,10 @@
     "project:clean": "cd example && npx react-native-clean-project --keep-node-modules --remove-iOS-build --remove-iOS-pods --remove-android-build --keep-brew --keep-pods && \\rm -fr ios/Pods",
     "dev:sync": "yarn build && cd example/node_modules/rn-local-authentication/ && rm -rf android ios dist src && cd ../../../ && cp -r *podspec dist android ios src example/node_modules/rn-local-authentication/"
   },
-  "repository": "git+https://github.com/maysoftinc/react-native-local-authentication.git",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maysoftinc/react-native-local-authentication.git"
+  },
   "keywords": [
     "react-native",
     "biometry",
@@ -54,7 +57,6 @@
   },
   "dependencies": {},
   "directories": {
-    "doc": "docs",
-    "example": "example"
+    "doc": "docs"
   }
 }
