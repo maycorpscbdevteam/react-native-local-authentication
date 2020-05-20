@@ -1,11 +1,31 @@
 package com.bebnev.RNLocalAuthentication;
 
+import android.os.Build;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyPermanentlyInvalidatedException;
+import android.security.keystore.KeyProperties;
+import android.util.Log;
+
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.fragment.app.FragmentActivity;
 import androidx.biometric.BiometricPrompt;
 import androidx.biometric.BiometricManager;
+
 import static androidx.biometric.BiometricConstants.ERROR_NEGATIVE_BUTTON;
 import static androidx.biometric.BiometricConstants.ERROR_USER_CANCELED;
+
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
+import java.util.Arrays;
 import java.util.concurrent.Executor;
 
 import com.facebook.react.bridge.ReadableMap;
@@ -18,11 +38,19 @@ import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.Arguments;
 
-@ReactModule(name=RNLocalAuthenticationModule.NAME)
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.KeyGenerator;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+
+@ReactModule(name = RNLocalAuthenticationModule.NAME)
 public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
     public static final String NAME = "RNLocalAuthentication";
-
-    private static  final int AUTHORIZATION_FAILED = 9999;
+    public static final String KEY_NAME = "biometric_example";
+    private static final int AUTHORIZATION_FAILED = 9999;
+    private static final int FINGERPRINT_CHANGE = 7777;
     private Executor executor = new MainThreadExecutor();
     private BiometricPrompt biometricPrompt = null;
 
@@ -46,6 +74,7 @@ public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
 
     /**
      * Check if scanner is supported on the device
+     *
      * @param p
      */
     @ReactMethod
@@ -95,11 +124,15 @@ public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
      * @param options
      * @param p
      */
+    @RequiresApi(api = Build.VERSION_CODES.M)
     @ReactMethod
     public void authenticateAsync(ReadableMap options, final Promise p) {
         final boolean fallbackEnabled = options.hasKey("fallbackEnabled") && !options.isNull("fallbackEnabled")
-                    ? options.getBoolean("fallbackEnabled")
-                    : false;
+                ? options.getBoolean("fallbackEnabled")
+                : false;
+        final boolean isInit = options.hasKey("isInit") && !options.isNull("isInit")
+                ? options.getBoolean("isInit")
+                : false;
 
         if (!options.hasKey("reason") || options.isNull("reason")) {
             p.reject("ReasonNotSet", "Reason for requesting authentication is not specified");
@@ -122,7 +155,7 @@ public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
                 if (errorCode == ERROR_NEGATIVE_BUTTON && biometricPrompt != null) {
                     biometricPrompt.cancelAuthentication();
                     release();
-                } else if (errorCode == ERROR_USER_CANCELED && !fallbackEnabled && biometricPrompt != null ) {
+                } else if (errorCode == ERROR_USER_CANCELED && !fallbackEnabled && biometricPrompt != null) {
                     biometricPrompt.cancelAuthentication();
                     p.resolve(makeAuthorizationResponse(false, BiometricPrompt.ERROR_NEGATIVE_BUTTON));
                     release();
@@ -132,10 +165,10 @@ public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
                 p.resolve(makeAuthorizationResponse(false, errorCode));
             }
 
+            @RequiresApi(api = Build.VERSION_CODES.N)
             @Override
             public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                 super.onAuthenticationSucceeded(result);
-
                 p.resolve(makeAuthorizationResponse(true, null));
                 release();
             }
@@ -152,9 +185,26 @@ public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
 
         UiThreadUtil.runOnUiThread(
                 new Runnable() {
+                    @RequiresApi(api = Build.VERSION_CODES.N)
                     @Override
                     public void run() {
-                        biometricPrompt.authenticate(promptInfo);
+                        try {
+                            Cipher cipher = getCipher();
+                            SecretKey secretKey = getOrCreateSecretKey();
+                            cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+                            biometricPrompt.authenticate(promptInfo, new BiometricPrompt.CryptoObject(cipher));
+                        } catch (KeyPermanentlyInvalidatedException ex) {
+                            Log.e("run#KeyPermanently", ex.toString());
+                            removeSecretKey();
+                            if (isInit) {
+                                biometricPrompt.authenticate(promptInfo);
+                            } else {
+                                p.resolve(makeAuthorizationResponse(false, FINGERPRINT_CHANGE));
+                            }
+                        } catch (InvalidKeyException ex) {
+                            Log.e("run#InvalidKey", ex.toString());
+                            p.resolve(makeAuthorizationResponse(false, BiometricPrompt.ERROR_LOCKOUT));
+                        }
                     }
                 }
         );
@@ -225,7 +275,7 @@ public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
      * @return string
      */
     private String convertErrorCode(int errorCode) {
-        switch(errorCode) {
+        switch (errorCode) {
             /**
              * No biometric features available on this device.
              */
@@ -311,6 +361,8 @@ public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
              */
             case AUTHORIZATION_FAILED:
                 return "AuthenticationFailed";
+            case FINGERPRINT_CHANGE:
+                return "FingerprintChange";
             default:
                 //return "Unexpected error: " + String.valueOf(errorCode);
                 return null;
@@ -323,5 +375,55 @@ public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void release() {
         biometricPrompt = null;
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.N)
+    private SecretKey getOrCreateSecretKey() {
+        try {
+            KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+            // Before the keystore can be accessed, it must be loaded.
+            keyStore.load(null);
+            SecretKey secretKey = ((SecretKey) keyStore.getKey(KEY_NAME, null));
+            if (secretKey != null) {
+                return secretKey;
+            }
+            KeyGenParameterSpec keyGenParameterSpec = new KeyGenParameterSpec.Builder(
+                    KEY_NAME,
+                    KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                    .setBlockModes(KeyProperties.BLOCK_MODE_CBC)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_PKCS7)
+                    .setUserAuthenticationRequired(true)
+                    .setInvalidatedByBiometricEnrollment(true)
+                    .build();
+            KeyGenerator keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+            keyGenerator.init(keyGenParameterSpec);
+            return keyGenerator.generateKey();
+        } catch (Exception e) {
+            Log.e("generateKey", e.toString());
+        }
+        return null;
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.M)
+    private Cipher getCipher() {
+        try {
+            return Cipher.getInstance(KeyProperties.KEY_ALGORITHM_AES + "/"
+                    + KeyProperties.BLOCK_MODE_CBC + "/"
+                    + KeyProperties.ENCRYPTION_PADDING_PKCS7);
+        } catch (NoSuchPaddingException | NoSuchAlgorithmException e) {
+            Log.e("getCipher", e.toString());
+        }
+        return null;
+    }
+
+    private void removeSecretKey() {
+        try {
+            KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+            // Before the keystore can be accessed, it must be loaded.
+            keyStore.load(null);
+            keyStore.deleteEntry(KEY_NAME);
+        } catch (KeyStoreException | CertificateException | NoSuchAlgorithmException | IOException e) {
+            Log.e("removeSecretKey", e.toString());
+        }
     }
 }

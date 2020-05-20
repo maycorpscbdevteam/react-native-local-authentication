@@ -66,4 +66,6 @@ export type AuthenticateOptionsAndroid = AuthenticateOptionsDefault & {
      * Negative button text should not be set if `fallbackToPinCodeAction` is set to true.
      */
     cancelTitle?:string;
+
+    isInit?: boolean;
 };
