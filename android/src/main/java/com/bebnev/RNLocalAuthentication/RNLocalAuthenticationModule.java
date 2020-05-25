@@ -377,7 +377,7 @@ public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
         biometricPrompt = null;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.N)
+    @RequiresApi(api = Build.VERSION_CODES.M)
     private SecretKey getOrCreateSecretKey() {
         try {
             KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
@@ -387,16 +387,17 @@ public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
             if (secretKey != null) {
                 return secretKey;
             }
-            KeyGenParameterSpec keyGenParameterSpec = new KeyGenParameterSpec.Builder(
+            KeyGenParameterSpec.Builder builder = new KeyGenParameterSpec.Builder(
                     KEY_NAME,
                     KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
                     .setBlockModes(KeyProperties.BLOCK_MODE_CBC)
                     .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_PKCS7)
-                    .setUserAuthenticationRequired(true)
-                    .setInvalidatedByBiometricEnrollment(true)
-                    .build();
+                    .setUserAuthenticationRequired(true);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                builder.setInvalidatedByBiometricEnrollment(true);
+            }
             KeyGenerator keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-            keyGenerator.init(keyGenParameterSpec);
+            keyGenerator.init(builder.build());
             return keyGenerator.generateKey();
         } catch (Exception e) {
             Log.e("generateKey", e.toString());
