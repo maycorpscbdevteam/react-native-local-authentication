@@ -252,12 +252,7 @@ public class RNLocalAuthenticationModule extends ReactContextBaseJavaModule {
 
         BiometricPrompt.PromptInfo.Builder biometryBuilder = new BiometricPrompt.PromptInfo.Builder();
 
-        biometryBuilder.setTitle(title)
-                .setSubtitle(subtitle);
-
-        if (options.hasKey("description") && !options.isNull("description")) {
-            biometryBuilder.setDescription(options.getString("description"));
-        }
+        biometryBuilder.setTitle(title).setDescription(subtitle);
 
         if (fallbackToPinCodeAction) {
             biometryBuilder.setDeviceCredentialAllowed(true);
